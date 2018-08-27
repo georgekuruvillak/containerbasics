@@ -77,4 +77,80 @@ whoami
 cat /proc/$$/uid_map
 ```
 
+## Network namespace
 
+Check the interfaces in the root namespace and the addresses assigned.
+```
+ip link
+ip addr show
+```
+Create two namespaces ns1 and ns2.
+```
+ip netns add ns1
+ip netns add ns2
+ip netns
+```
+See the interfaces in each namespace.
+```
+ip netns exec ns1 ip link
+ip netns exec ns2 ip link
+```
+Now lets make them communicate with each other.
+We need a virtual bridge to connect the namespaces
+```
+apt-get install -y openvswitch-switch
+```
+Create a virtual bridge in the root namespace.
+```
+ovs-vsctl add-br OVS-1
+ovs-vsctl show
+ip a s OVS-1
+```
+Next let us create virtual eth pipes.
+```
+ip link add eth1-ns1 type veth peer name veth-ns1
+ip link add eth1-ns2 type veth peer name veth-ns2
+```
+List out the interfaces.
+```
+ip link
+```
+Assigning one end of the eth pipes to respective namespaces.
+```
+ip link set eth1-ns1 netns ns1
+ip link set eth1-ns2 netns ns2
+```
+Check the interfaces in the namespaces.
+```
+ip netns exec ns1 ip link
+ip netns exec ns2 ip link
+```
+Check interfaces in the root namespace.
+```
+ip link
+```
+Connect the other end of the two virtual pipes, the veth-ns1 and veth-ns2.
+```
+ovs-vsctl add-port OVS-1 veth-ns1
+ovs-vsctl add-port OVS-1 veth-ns2
+ovs-vsctl show
+```
+The last thing left to do is bring the network interfaces up and assign IP addresses:
+```  
+ip link set veth-ns1 up
+ip link set veth-ns2 up
+ip netns exec ns1 ip link set dev lo up
+ip netns exec ns1 ip link set dev eth1-ns1 up
+ip netns exec ns1 ip address add 192.168.0.1/24 dev eth1-ns1
+ip netns exec ns1 ip a s
+
+ip netns exec ns2 ip link set dev lo up
+ip netns exec ns2 ip link set dev eth1-ns2 up
+ip netns exec ns2 ip address add 192.168.0.2/24 dev eth1-ns2
+ip netns exec ns2 ip a s
+```
+Try communicating from ns1 to ns2
+```
+ip netns exec ns1 ping -c 3 192.168.0.2
+```
+Cool!!!
